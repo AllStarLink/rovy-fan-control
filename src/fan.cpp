@@ -7,13 +7,14 @@
 #include <math.h>
 
 #include <wiringpi/wiringPi.h>
+#include <wiringpi/softPwm.h>
 
-#define PWM_PIN 1
+#define PWM_PIN 0
 
 #define FAN_OFF 0
 
-#define FAN_MIN_VOLT 2
-#define FAN_MAX_VOLT 5
+#define FAN_MIN_VOLT 2.45
+#define FAN_MAX_VOLT 5.20
 
 #define CPU_TARGET_TEMP 45
 
@@ -34,32 +35,33 @@ float getCPUTemp() {
 }
 
 int voltageToSpeed(double volt) {
-	double a = -2635.761;
-	double b = 4442.3;
-	double c = 2645.764;
-	double d = 772.5762;
-	double e = 110.5112;
-	double f = 6.210389;
+	if (volt <= 0) return FAN_OFF;
 
-	// quintic regression
-	int speed = (a) + (b * volt) - (c * pow(volt,2)) + (d * pow(volt,3)) - (e * pow(volt,4)) + (f * pow(volt,5));
-	return speed > 0 ? speed : 0;
+	double a = 3899.414;
+	double b = 5013.603;
+	double c = 2265.318;
+	double d = 421.6892;
+	double e = 28.97351;
+
+	// quartic regression
+	int speed = (a) - (b * volt) + (c * pow(volt,2)) - (d * pow(volt,3)) + (e * pow(volt,4));
+	return min(speed, 1000);
 }
 
 void changeFanSpeed(int speed) {
 	static int maxSpeed = voltageToSpeed(FAN_MAX_VOLT);
 
 	if (speed != FAN_OFF) {
-		pwmWrite(PWM_PIN, maxSpeed);
-		delay(10);
+		softPwmWrite(PWM_PIN, maxSpeed);
+		delay(100);
 	}
 
-	pwmWrite(PWM_PIN, speed);
+	softPwmWrite(PWM_PIN, speed);
 }
 
 void setup() {
 	wiringPiSetup();
-	pinMode(PWM_PIN, PWM_OUTPUT);
+	softPwmCreate(PWM_PIN, 0, 1000);
 }
 
 int main(int argc, char *argv[]) {
@@ -68,7 +70,10 @@ int main(int argc, char *argv[]) {
 //	istringstream iss(argv[1]);
 //	int speed;
 //	iss >> speed;
-//	changeFanSpeed(speed);
+//	softPwmWrite(PWM_PIN, 1000);
+//	delay(100);
+//	softPwmWrite(PWM_PIN, speed);
+//	while (1) delay(5000);
 
 	while (getCPUTemp() < 45) {
 		delay(5000);
@@ -81,8 +86,8 @@ int main(int argc, char *argv[]) {
 		float temp = getCPUTemp();
 		float diff = temp - CPU_TARGET_TEMP;
 		sum += isLimit ? 0 : diff;
-		float pDiff = diff * 0.3;//diff * 5;
-		float iDiff = sum * 0.08;//sum * 4;
+		float pDiff = diff * 0.4;
+		float iDiff = sum * 0.2;
 		double volt = FAN_MIN_VOLT - 1 + pDiff + iDiff;
 
 		isLimit = false;
